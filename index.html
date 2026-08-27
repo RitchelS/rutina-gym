@@ -173,6 +173,52 @@
     overflow:hidden;
   }
   .exercise.completed{border-color:#c6a2ea;background:linear-gradient(180deg,#fff,#fcf8ff)}
+
+  .exercise .exercise-body{
+    display:block;
+  }
+  .exercise.collapsed .exercise-body{
+    display:none;
+  }
+  .exercise-head{
+    cursor:pointer;
+    user-select:none;
+  }
+  .exercise-head-main{
+    flex:1;
+    min-width:0;
+  }
+  .exercise-head-right{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex:0 0 auto;
+  }
+  .collapse-icon{
+    width:30px;
+    height:30px;
+    display:grid;
+    place-items:center;
+    border-radius:10px;
+    background:#f1e7fa;
+    color:var(--lila2);
+    font-size:16px;
+    font-weight:900;
+    transition:transform .18s ease;
+  }
+  .exercise.collapsed .collapse-icon{
+    transform:rotate(-90deg);
+  }
+  .completed-summary{
+    display:none;
+    padding:0 17px 14px;
+    color:#7f6990;
+    font-size:12px;
+    font-weight:700;
+  }
+  .exercise.collapsed .completed-summary{
+    display:block;
+  }
   .exercise-head{
     padding:17px 17px 12px;
     display:flex;justify-content:space-between;gap:10px;align-items:flex-start;
@@ -856,6 +902,10 @@ function todayKey(){
 }
 function sessionKey(day){ return selectedDate+"_day"+day; }
 function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+
+function isExerciseCollapsed(sessionEx){
+  return !!sessionEx.collapsed;
+}
 function toast(msg){
   const t=document.getElementById("toast");
   t.textContent=msg;t.classList.add("show");
@@ -871,6 +921,7 @@ function emptySession(day){
       name:ex.name,
       skipped:false,
       note:"",
+      collapsed:false,
       sets:Array.from({length:ex.sets},()=>({reps:ex.reps,weight:"",done:false}))
     }))
   };
@@ -1083,7 +1134,8 @@ function renderWorkout(){
     const lastWeight=lastExerciseData(ex.name);
 
     const card=document.createElement("div");
-    card.className="exercise"+(completed?" completed":"")+(sessionEx.skipped?" skipped":"");
+    const collapsed = completed && isExerciseCollapsed(sessionEx);
+    card.className="exercise"+(completed?" completed":"")+(sessionEx.skipped?" skipped":"")+(collapsed?" collapsed":"");
     let setsHtml="";
     sessionEx.sets.forEach((set,si)=>{
       setsHtml+=`
@@ -1102,30 +1154,40 @@ function renderWorkout(){
     });
 
     card.innerHTML=`
-      <div class="exercise-head">
-        <div>
+      <div class="exercise-head" data-toggle-exercise="${ei}">
+        <div class="exercise-head-main">
           <div class="exercise-title">${ex.name}</div>
           <div class="target">Objetivo: ${ex.sets} series × ${ex.reps} reps</div>
         </div>
-        <span class="done-chip">Completado ✨</span>
+        <div class="exercise-head-right">
+          <span class="done-chip">Completado ✨</span>
+          <span class="collapse-icon">⌄</span>
+        </div>
       </div>
-      ${lastWeight!==null?`<div class="last-info">💜 Último peso registrado: <strong>${lastWeight} lb</strong></div>`:""}
-      <div class="exercise-visual">
-        <button type="button" data-reference="${ei}">
-          ${exerciseSvg(ex.name,false)}
-          <div class="visual-caption">
-            <span>Referencia visual del ejercicio</span>
-            <span>Ver grande ♡</span>
-          </div>
-        </button>
+
+      <div class="completed-summary">
+        ✓ ${sessionEx.sets.length} series completadas · Toca para ver o modificar
       </div>
-      <div class="sets">${setsHtml}</div>
-      ${ex.note?`<div class="exercise-note">✨ ${ex.note}</div>`:""}
-      <div class="exercise-extra">
-        <button class="skip-btn ${sessionEx.skipped?"skipped":""}" data-skip="${ei}">
-          ${sessionEx.skipped ? "↩️ Marcar para hacer" : "⏭️ Saltar ejercicio"}
-        </button>
-        <textarea class="note-input" data-note="${ei}" placeholder="Nota opcional: lesión, molestia, máquina ocupada, etc.">${sessionEx.note || ""}</textarea>
+
+      <div class="exercise-body">
+        ${lastWeight!==null?`<div class="last-info">💜 Último peso registrado: <strong>${lastWeight} lb</strong></div>`:""}
+        <div class="exercise-visual">
+          <button type="button" data-reference="${ei}">
+            ${exerciseSvg(ex.name,false)}
+            <div class="visual-caption">
+              <span>Referencia visual del ejercicio</span>
+              <span>Ver grande ♡</span>
+            </div>
+          </button>
+        </div>
+        <div class="sets">${setsHtml}</div>
+        ${ex.note?`<div class="exercise-note">✨ ${ex.note}</div>`:""}
+        <div class="exercise-extra">
+          <button class="skip-btn ${sessionEx.skipped?"skipped":""}" data-skip="${ei}">
+            ${sessionEx.skipped ? "↩️ Marcar para hacer" : "⏭️ Saltar ejercicio"}
+          </button>
+          <textarea class="note-input" data-note="${ei}" placeholder="Nota opcional: lesión, molestia, máquina ocupada, etc.">${sessionEx.note || ""}</textarea>
+        </div>
       </div>
     `;
     list.appendChild(card);
@@ -1137,6 +1199,18 @@ function renderWorkout(){
       const v=e.target.value;
       session.exercises[ei].sets[si][kind]=kind==="reps" ? (v===""?"":Number(v)) : v;
       save();
+    });
+  });
+
+  list.querySelectorAll("[data-toggle-exercise]").forEach(head=>{
+    head.addEventListener("click",e=>{
+      if(e.target.closest("button,input,textarea")) return;
+      const ei=+head.dataset.toggleExercise;
+      const ex=session.exercises[ei];
+      if(!ex.sets.every(s=>s.done)) return;
+      ex.collapsed=!ex.collapsed;
+      save();
+      renderWorkout();
     });
   });
 
@@ -1152,6 +1226,7 @@ function renderWorkout(){
       const ei=+btn.dataset.skip;
       const ex=session.exercises[ei];
       ex.skipped=!ex.skipped;
+      ex.collapsed=false;
       if(ex.skipped) ex.sets.forEach(s=>s.done=false);
       save();
       renderWorkout();
@@ -1173,9 +1248,24 @@ function renderWorkout(){
       const set=session.exercises[ei].sets[si];
       set.done=!set.done;
       if(set.done && (set.reps==="" || set.reps==null)) set.reps=routine[selectedDay][ei].reps;
+
+      const exercise=session.exercises[ei];
+      const nowCompleted=exercise.sets.every(s=>s.done);
+
+      if(nowCompleted){
+        exercise.collapsed=true;
+      }else{
+        exercise.collapsed=false;
+      }
+
       save();
       renderWorkout();
-      if(set.done) toast("Serie completada ✨");
+
+      if(nowCompleted){
+        toast("¡Ejercicio completado! ✨");
+      }else if(set.done){
+        toast("Serie completada ✨");
+      }
     });
   });
   updateProgress();
