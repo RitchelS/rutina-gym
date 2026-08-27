@@ -267,6 +267,7 @@
     color:var(--dark);font-weight:800;text-align:center;min-width:0;
   }
   .field span{font-size:10px;color:var(--muted)}
+  .unit-select{border:0;outline:none;background:#f3e9fb;color:#805da2;font-size:10px;font-weight:900;border-radius:8px;padding:4px 3px;cursor:pointer}
   .check{
     width:38px;height:38px;border-radius:12px;
     border:2px solid #d9c5ee;background:#fff;color:transparent;
@@ -922,7 +923,7 @@ function emptySession(day){
       skipped:false,
       note:"",
       collapsed:false,
-      sets:Array.from({length:ex.sets},()=>({reps:ex.reps,weight:"",done:false}))
+      sets:Array.from({length:ex.sets},()=>({reps:ex.reps,weight:"",unit:"lb",done:false}))
     }))
   };
 }
@@ -935,8 +936,8 @@ function lastExerciseData(name){
   for(let i=data.history.length-1;i>=0;i--){
     const ex=data.history[i].exercises?.find(x=>x.name===name);
     if(ex){
-      const weights=ex.sets.map(s=>s.weight).filter(v=>v!=="" && v!=null);
-      if(weights.length) return weights[weights.length-1];
+      const weighted=ex.sets.filter(s=>s.weight!=="" && s.weight!=null);
+      if(weighted.length){ const x=weighted[weighted.length-1]; return {weight:x.weight,unit:x.unit||"lb"}; }
     }
   }
   return null;
@@ -1147,7 +1148,10 @@ function renderWorkout(){
         </label>
         <label class="field">
           <input inputmode="decimal" type="number" step="0.5" min="0" value="${set.weight ?? ""}" placeholder="—" data-kind="weight" data-e="${ei}" data-s="${si}" aria-label="Peso serie ${si+1}">
-          <span>lb</span>
+          <select class="unit-select" data-unit data-e="${ei}" data-s="${si}" aria-label="Unidad de peso serie ${si+1}">
+            <option value="lb" ${(set.unit||"lb")==="lb"?"selected":""}>lb</option>
+            <option value="kg" ${(set.unit||"lb")==="kg"?"selected":""}>kg</option>
+          </select>
         </label>
         <button class="check ${set.done?"checked":""}" data-check data-e="${ei}" data-s="${si}" aria-label="Marcar serie">${set.done?"✓":"✓"}</button>
       </div>`;
@@ -1170,7 +1174,7 @@ function renderWorkout(){
       </div>
 
       <div class="exercise-body">
-        ${lastWeight!==null?`<div class="last-info">💜 Último peso registrado: <strong>${lastWeight} lb</strong></div>`:""}
+        ${lastWeight!==null?`<div class="last-info">💜 Último peso registrado: <strong>${lastWeight.weight} ${lastWeight.unit}</strong></div>`:""}
         <div class="exercise-visual">
           <button type="button" data-reference="${ei}">
             ${exerciseSvg(ex.name,false)}
@@ -1198,6 +1202,14 @@ function renderWorkout(){
       const ei=+e.target.dataset.e, si=+e.target.dataset.s, kind=e.target.dataset.kind;
       const v=e.target.value;
       session.exercises[ei].sets[si][kind]=kind==="reps" ? (v===""?"":Number(v)) : v;
+      save();
+    });
+  });
+
+  list.querySelectorAll("[data-unit]").forEach(sel=>{
+    sel.addEventListener("change",()=>{
+      const ei=+sel.dataset.e, si=+sel.dataset.s;
+      session.exercises[ei].sets[si].unit=sel.value;
       save();
     });
   });
@@ -1363,7 +1375,7 @@ function renderHistory(){
     const details=s.exercises.map(ex=>{
       const sets=ex.sets.map((set,si)=>{
         const reps=(set.reps===""||set.reps==null)?"—":set.reps;
-        const weight=(set.weight===""||set.weight==null)?"—":set.weight+" lb";
+        const weight=(set.weight===""||set.weight==null)?"—":set.weight+" "+(set.unit||"lb");
         return `<div class="history-set">
           <span>Serie ${si+1} ${set.done?"✓":"♡"}</span>
           <span>${reps} reps · ${weight}</span>
